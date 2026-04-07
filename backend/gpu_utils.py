@@ -118,9 +118,31 @@ def _verify_cuda_runtime() -> bool:
 
     ctranslate2.get_supported_compute_types('cuda') only lists types *compiled*
     into the binary — it does NOT verify that cublas64_12.dll is present.
-    We must actually attempt to load a model on CUDA to be sure.
+    pip packages install DLLs into site-packages/nvidia/*/bin/, not on PATH.
     """
-    # 1) Try to load the cuBLAS DLL directly (fast, no model needed)
+    # 1) Check if nvidia pip packages are installed (DLLs live inside them)
+    try:
+        import nvidia.cublas
+        import os
+        cublas_dir = os.path.join(os.path.dirname(nvidia.cublas.__file__), "bin")
+        if os.path.isdir(cublas_dir):
+            # Add to DLL search path so CTranslate2 can find it at runtime
+            if hasattr(os, "add_dll_directory"):
+                os.add_dll_directory(cublas_dir)
+            logger.info(f"CUDA runtime verified via nvidia pip package: {cublas_dir}")
+            return True
+    except ImportError:
+        pass
+    except Exception as e:
+        logger.warning(f"nvidia pip package check failed: {e}")
+
+    # 2) Check for cudnn too
+    try:
+        import nvidia.cudnn
+    except ImportError:
+        pass
+
+    # 3) Try system-installed DLL directly (CUDA Toolkit in PATH)
     try:
         import ctypes
         import sys
@@ -128,14 +150,12 @@ def _verify_cuda_runtime() -> bool:
             ctypes.WinDLL("cublas64_12.dll")
         else:
             ctypes.CDLL("libcublas.so.12")
-        logger.info("CUDA runtime verified: cublas library loaded successfully")
+        logger.info("CUDA runtime verified: system cublas library loaded")
         return True
     except OSError:
-        pass  # DLL not found — try other methods
-    except Exception:
         pass
 
-    # 2) Try PyTorch (loads its own CUDA runtime)
+    # 4) Try PyTorch (loads its own CUDA runtime)
     try:
         import torch
         if torch.cuda.is_available():
@@ -148,7 +168,6 @@ def _verify_cuda_runtime() -> bool:
         logger.warning(f"PyTorch CUDA runtime check failed: {e}")
         return False
 
-    # 3) Not loadable
     logger.warning("CUDA runtime libraries (cublas) not found")
     return False
 

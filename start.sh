@@ -60,11 +60,12 @@ if command -v nvidia-smi &>/dev/null; then
         echo "  GPU: $name (${vram} Mo VRAM)"
     done
     # Install CUDA runtime libraries if not already working
-    if python -c "import ctypes; ctypes.CDLL('libcublas.so.12')" &>/dev/null; then
+    if python -c "import nvidia.cublas" &>/dev/null; then
         echo "  CUDA: opérationnel"
     else
         echo "[INFO] Installation des bibliothèques CUDA..."
-        if pip install nvidia-cublas-cu12 nvidia-cudnn-cu12 --quiet 2>/dev/null; then
+        pip install nvidia-cublas-cu12 nvidia-cudnn-cu12 --quiet 2>/dev/null
+        if python -c "import nvidia.cublas" &>/dev/null; then
             echo "[INFO] CUDA installé avec succès."
         else
             echo "[AVERTISSEMENT] Impossible d'installer CUDA — le mode CPU sera utilisé."

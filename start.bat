@@ -65,10 +65,11 @@ if %ERRORLEVEL% equ 0 (
         echo   GPU: %%a ^(%%b Mo VRAM^)
     )
     :: Install CUDA runtime libraries if not already present
-    python -c "import ctypes; ctypes.WinDLL('cublas64_12.dll')" >nul 2>&1
+    python -c "import nvidia.cublas" >nul 2>&1
     if %ERRORLEVEL% neq 0 (
         echo [INFO] Installation des bibliothèques CUDA...
-        pip install nvidia-cublas-cu12 nvidia-cudnn-cu12 --quiet
+        pip install nvidia-cublas-cu12 nvidia-cudnn-cu12 --quiet 2>nul
+        python -c "import nvidia.cublas" >nul 2>&1
         if %ERRORLEVEL% equ 0 (
             echo [INFO] CUDA installé avec succès.
         ) else (
