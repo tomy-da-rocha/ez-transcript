@@ -81,7 +81,7 @@ echo.
 start "" cmd /c "timeout /t 2 /nobreak >nul & start http://localhost:%PORT%"
 
 :: Run server
-python -m uvicorn backend.main:app --host 0.0.0.0 --port %PORT% --reload
+python -m uvicorn backend.main:app --host 0.0.0.0 --port %PORT%
 
 :: If server stops
 echo.

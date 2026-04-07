@@ -164,15 +164,16 @@ AVAILABLE_MODELS = ["large-v3", "medium", "small", "base", "tiny"]
 
 # Approximate VRAM footprint per model in MB (int8_float16 / int8)
 _MODEL_VRAM_MB = {
-    "large-v3": 3000,
-    "medium": 1500,
-    "small": 500,
-    "base": 200,
-    "tiny": 100,
+    "large-v3": 3200,
+    "medium": 1600,
+    "small": 600,
+    "base": 300,
+    "tiny": 150,
 }
 
-# Approximate VRAM per batch element (activations + KV cache)
-_BATCH_ELEMENT_MB = 180
+# Approximate VRAM per batch element (encoder activations + decoder KV cache + workspace)
+# Measured empirically: ~300-400 MB per element for large-v3
+_BATCH_ELEMENT_MB = 350
 
 
 def estimate_batch_size(model_size: str, vram_free_mb: int) -> int:
@@ -183,13 +184,13 @@ def estimate_batch_size(model_size: str, vram_free_mb: int) -> int:
     if vram_free_mb <= 0:
         return 0
 
-    model_vram = _MODEL_VRAM_MB.get(model_size, 3000)
-    headroom = vram_free_mb - model_vram - 400  # 400 MB safety margin
+    model_vram = _MODEL_VRAM_MB.get(model_size, 3200)
+    headroom = vram_free_mb - model_vram - 500  # 500 MB safety margin for OS/drivers
 
     if headroom <= 0:
         return 1
 
-    batch = min(32, max(1, int(headroom / _BATCH_ELEMENT_MB)))
+    batch = min(24, max(2, int(headroom / _BATCH_ELEMENT_MB)))
     logger.info(
         f"Estimated batch_size={batch} for {model_size} "
         f"(VRAM free: {vram_free_mb} MB, model: ~{model_vram} MB, headroom: {headroom} MB)"

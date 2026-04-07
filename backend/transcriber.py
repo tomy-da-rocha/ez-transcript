@@ -51,13 +51,22 @@ def _load_faster_whisper(model_size: str, gpu_info: GPUInfo):
     device = gpu_info.device if gpu_info.device in ("cuda", "cpu") else "cpu"
     compute_type = gpu_info.compute_type
 
-    logger.info(f"Loading faster-whisper model '{model_size}' on {device} (compute: {compute_type})")
+    # Use multiple CPU threads for preprocessing (mel-spectrogram, audio decoding)
+    # so the GPU doesn't starve waiting for data
+    try:
+        import os
+        cpu_threads = max(4, os.cpu_count() or 4)
+    except Exception:
+        cpu_threads = 4
+
+    logger.info(f"Loading faster-whisper model '{model_size}' on {device} (compute: {compute_type}, cpu_threads: {cpu_threads})")
 
     model_kwargs = dict(
         device=device,
         compute_type=compute_type,
         download_root=str(Path(__file__).resolve().parent / "models"),
-        num_workers=2 if device == "cuda" else 1,
+        cpu_threads=cpu_threads,
+        num_workers=4 if device == "cuda" else 1,
     )
 
     try:
@@ -72,13 +81,15 @@ def _load_faster_whisper(model_size: str, gpu_info: GPUInfo):
                 base_model = WhisperModel(model_size, **model_kwargs)
             except Exception:
                 logger.warning(f"int8 on {device} also failed, falling back to CPU")
+                device = "cpu"
                 model_kwargs["device"] = "cpu"
                 base_model = WhisperModel(model_size, **model_kwargs)
         else:
             raise
 
     # Wrap in BatchedInferencePipeline for parallel segment processing on GPU
-    if device == "cuda":
+    actual_device = model_kwargs.get("device", device)
+    if actual_device == "cuda":
         model = BatchedInferencePipeline(model=base_model)
         logger.info("Using BatchedInferencePipeline for GPU-accelerated parallel decoding")
     else:
