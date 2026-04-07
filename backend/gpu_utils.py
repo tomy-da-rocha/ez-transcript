@@ -114,35 +114,16 @@ def _detect_gpu_uncached() -> GPUInfo:
 
 
 def _verify_cuda_runtime() -> bool:
-    """Check that CUDA runtime libraries (cuBLAS, etc.) are actually loadable.
+    """Check that CUDA runtime libraries (cuBLAS, cuDNN) are actually loadable.
 
     ctranslate2.get_supported_compute_types('cuda') only lists types *compiled*
     into the binary — it does NOT verify that cublas64_12.dll is present.
     pip packages install DLLs into site-packages/nvidia/*/bin/, not on PATH.
     """
-    # 1) Check if nvidia pip packages are installed (DLLs live inside them)
-    try:
-        import nvidia.cublas
-        import os
-        cublas_dir = os.path.join(os.path.dirname(nvidia.cublas.__file__), "bin")
-        if os.path.isdir(cublas_dir):
-            # Add to DLL search path so CTranslate2 can find it at runtime
-            if hasattr(os, "add_dll_directory"):
-                os.add_dll_directory(cublas_dir)
-            logger.info(f"CUDA runtime verified via nvidia pip package: {cublas_dir}")
-            return True
-    except ImportError:
-        pass
-    except Exception as e:
-        logger.warning(f"nvidia pip package check failed: {e}")
+    _register_nvidia_dll_paths()
 
-    # 2) Check for cudnn too
-    try:
-        import nvidia.cudnn
-    except ImportError:
-        pass
-
-    # 3) Try system-installed DLL directly (CUDA Toolkit in PATH)
+    # 1) Verify cuBLAS is loadable
+    cublas_ok = False
     try:
         import ctypes
         import sys
@@ -150,26 +131,60 @@ def _verify_cuda_runtime() -> bool:
             ctypes.WinDLL("cublas64_12.dll")
         else:
             ctypes.CDLL("libcublas.so.12")
-        logger.info("CUDA runtime verified: system cublas library loaded")
-        return True
+        cublas_ok = True
+        logger.info("CUDA runtime verified: cublas library loaded")
     except OSError:
         pass
 
-    # 4) Try PyTorch (loads its own CUDA runtime)
-    try:
-        import torch
-        if torch.cuda.is_available():
-            torch.zeros(1, device="cuda")
-            logger.info("CUDA runtime verified via PyTorch")
-            return True
-    except ImportError:
-        pass
-    except Exception as e:
-        logger.warning(f"PyTorch CUDA runtime check failed: {e}")
+    if not cublas_ok:
+        # Try PyTorch as last resort (bundles its own CUDA)
+        try:
+            import torch
+            if torch.cuda.is_available():
+                torch.zeros(1, device="cuda")
+                logger.info("CUDA runtime verified via PyTorch")
+                return True
+        except ImportError:
+            pass
+        except Exception as e:
+            logger.warning(f"PyTorch CUDA runtime check failed: {e}")
+
+        logger.warning("CUDA runtime libraries (cublas) not found")
         return False
 
-    logger.warning("CUDA runtime libraries (cublas) not found")
-    return False
+    return True
+
+
+def _register_nvidia_dll_paths():
+    """Register DLL directories from nvidia pip packages so CTranslate2 can find them.
+
+    This must be called before any CTranslate2/faster-whisper model loading.
+    Safe to call multiple times — paths are only added once.
+    """
+    import os
+    import sys
+
+    if sys.platform != "win32":
+        # On Linux, pip packages use LD_LIBRARY_PATH or rpath — no action needed
+        return
+
+    if not hasattr(os, "add_dll_directory"):
+        return
+
+    nvidia_packages = ["nvidia.cublas", "nvidia.cudnn", "nvidia.cuda_runtime", "nvidia.cufft", "nvidia.curand"]
+    for pkg_name in nvidia_packages:
+        try:
+            pkg = __import__(pkg_name, fromlist=[""])
+            bin_dir = os.path.join(os.path.dirname(pkg.__file__), "bin")
+            lib_dir = os.path.join(os.path.dirname(pkg.__file__), "lib")
+            for d in (bin_dir, lib_dir):
+                if os.path.isdir(d):
+                    os.add_dll_directory(d)
+                    logger.debug(f"Registered DLL directory: {d}")
+        except ImportError:
+            continue
+        except Exception as e:
+            logger.debug(f"Could not register {pkg_name}: {e}")
 
 
 def _detect_via_nvidia_smi() -> GPUInfo | None:

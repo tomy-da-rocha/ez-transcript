@@ -63,9 +63,8 @@ if command -v nvidia-smi &>/dev/null; then
     if python -c "import nvidia.cublas" &>/dev/null; then
         echo "  CUDA: opérationnel"
     else
-        echo "[INFO] Installation des bibliothèques CUDA..."
-        pip install nvidia-cublas-cu12 nvidia-cudnn-cu12 --quiet 2>/dev/null
-        if python -c "import nvidia.cublas" &>/dev/null; then
+        echo "[INFO] Installation des bibliothèques CUDA (~800 Mo)..."
+        if pip install nvidia-cublas-cu12 nvidia-cudnn-cu12; then
             echo "[INFO] CUDA installé avec succès."
         else
             echo "[AVERTISSEMENT] Impossible d'installer CUDA — le mode CPU sera utilisé."

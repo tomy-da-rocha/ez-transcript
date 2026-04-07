@@ -48,6 +48,10 @@ class _CudaPermanentError(Exception):
 def _load_faster_whisper(model_size: str, gpu_info: GPUInfo):
     """Load a faster-whisper model with batched inference pipeline for max GPU utilization."""
     from faster_whisper import WhisperModel, BatchedInferencePipeline
+    from backend.gpu_utils import _register_nvidia_dll_paths
+
+    # Ensure CUDA DLL paths are registered before CTranslate2 tries to load them
+    _register_nvidia_dll_paths()
 
     cache_key = f"faster_whisper_{model_size}_{gpu_info.device}"
     if cache_key in _model_cache:

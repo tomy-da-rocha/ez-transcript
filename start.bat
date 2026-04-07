@@ -67,13 +67,12 @@ if %ERRORLEVEL% equ 0 (
     :: Install CUDA runtime libraries if not already present
     python -c "import nvidia.cublas" >nul 2>&1
     if %ERRORLEVEL% neq 0 (
-        echo [INFO] Installation des bibliothèques CUDA...
-        pip install nvidia-cublas-cu12 nvidia-cudnn-cu12 --quiet 2>nul
-        python -c "import nvidia.cublas" >nul 2>&1
-        if %ERRORLEVEL% equ 0 (
-            echo [INFO] CUDA installé avec succès.
-        ) else (
+        echo [INFO] Installation des bibliothèques CUDA ^(~800 Mo^)...
+        pip install nvidia-cublas-cu12 nvidia-cudnn-cu12
+        if %ERRORLEVEL% neq 0 (
             echo [AVERTISSEMENT] Impossible d'installer CUDA — le mode CPU sera utilisé.
+        ) else (
+            echo [INFO] CUDA installé avec succès.
         )
     ) else (
         echo   CUDA: opérationnel
