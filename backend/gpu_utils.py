@@ -1,0 +1,197 @@
+"""
+GPU detection and VRAM management utilities.
+Detects NVIDIA GPU via torch.cuda, falls back to CPU.
+Selects optimal Whisper model based on available VRAM.
+"""
+
+import logging
+import subprocess
+import shutil
+from dataclasses import dataclass
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class GPUInfo:
+    available: bool
+    device: str  # "cuda", "cpu", or "mps"
+    name: str
+    vram_total_mb: int
+    vram_free_mb: int
+    compute_type: str  # "float16", "int8", "int8_float16", "float32"
+
+
+def detect_gpu() -> GPUInfo:
+    """Detect the best available compute device and return GPU info."""
+
+    # Try nvidia-smi first (works without PyTorch, which is optional)
+    nvidia_smi = _detect_via_nvidia_smi()
+    if nvidia_smi:
+        return nvidia_smi
+
+    # Try PyTorch CUDA (if installed)
+    try:
+        import torch
+        if torch.cuda.is_available():
+            device_index = 0
+            name = torch.cuda.get_device_name(device_index)
+            vram_total = torch.cuda.get_device_properties(device_index).total_mem
+            vram_free = vram_total - torch.cuda.memory_reserved(device_index)
+            vram_total_mb = int(vram_total / (1024 * 1024))
+            vram_free_mb = int(vram_free / (1024 * 1024))
+            logger.info(f"CUDA GPU detected via PyTorch: {name} ({vram_total_mb} MB total, {vram_free_mb} MB free)")
+            return GPUInfo(
+                available=True,
+                device="cuda",
+                name=name,
+                vram_total_mb=vram_total_mb,
+                vram_free_mb=vram_free_mb,
+                compute_type="float16",
+            )
+    except ImportError:
+        pass
+    except Exception as e:
+        logger.warning(f"PyTorch CUDA detection failed: {e}")
+
+    # Try Apple MPS (macOS)
+    try:
+        import torch
+        if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            logger.info("Apple MPS device detected")
+            return GPUInfo(
+                available=True,
+                device="mps",
+                name="Apple MPS",
+                vram_total_mb=0,
+                vram_free_mb=0,
+                compute_type="float32",
+            )
+    except Exception:
+        pass
+
+    # CPU fallback
+    logger.info("No GPU detected, falling back to CPU")
+    return GPUInfo(
+        available=False,
+        device="cpu",
+        name="CPU",
+        vram_total_mb=0,
+        vram_free_mb=0,
+        compute_type="int8",
+    )
+
+
+def _detect_via_nvidia_smi() -> GPUInfo | None:
+    """Try detecting NVIDIA GPU via nvidia-smi command."""
+    nvidia_smi_path = shutil.which("nvidia-smi")
+    if not nvidia_smi_path:
+        return None
+    try:
+        result = subprocess.run(
+            [nvidia_smi_path, "--query-gpu=name,memory.total,memory.free", "--format=csv,noheader,nounits"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            line = result.stdout.strip().split("\n")[0]
+            parts = [p.strip() for p in line.split(",")]
+            if len(parts) == 3:
+                name = parts[0]
+                vram_total_mb = int(parts[1])
+                vram_free_mb = int(parts[2])
+                logger.info(f"nvidia-smi GPU: {name} ({vram_total_mb} MB total, {vram_free_mb} MB free)")
+
+                # Validate CUDA is actually usable from Python before claiming float16
+                compute_type = _safe_compute_type("cuda")
+                device = "cuda" if compute_type != "int8" else "cpu"
+
+                return GPUInfo(
+                    available=device == "cuda",
+                    device=device,
+                    name=name,
+                    vram_total_mb=vram_total_mb,
+                    vram_free_mb=vram_free_mb,
+                    compute_type=compute_type,
+                )
+    except Exception as e:
+        logger.warning(f"nvidia-smi detection failed: {e}")
+    return None
+
+
+def _safe_compute_type(device: str) -> str:
+    """Determine a compute type that is actually supported on this device."""
+    if device == "cpu":
+        return "int8"
+    # Check if CUDA is really available via PyTorch
+    try:
+        import torch
+        if not torch.cuda.is_available():
+            logger.warning("nvidia-smi found a GPU but torch.cuda is not available — falling back to CPU/int8")
+            return "int8"
+        # Check GPU compute capability for float16 support (>= 7.0 for good perf)
+        capability = torch.cuda.get_device_capability(0)
+        if capability[0] >= 7:
+            return "float16"
+        elif capability[0] >= 6:
+            return "int8_float16"
+        else:
+            return "int8"
+    except ImportError:
+        logger.warning("PyTorch not installed — cannot validate CUDA, falling back to int8")
+        return "int8"
+    except Exception as e:
+        logger.warning(f"CUDA validation failed: {e} — falling back to int8")
+        return "int8"
+
+
+def select_model_size(gpu_info: GPUInfo) -> str:
+    """Select the optimal Whisper model size based on available VRAM/RAM."""
+    if gpu_info.device in ("cuda", "mps") and gpu_info.vram_total_mb > 0:
+        vram = gpu_info.vram_total_mb
+        if vram >= 10_000:
+            return "large-v3"
+        elif vram >= 6_000:
+            return "medium"
+        elif vram >= 4_000:
+            return "small"
+        else:
+            return "base"
+    else:
+        # CPU: check system RAM
+        try:
+            import psutil
+            ram_gb = psutil.virtual_memory().total / (1024 ** 3)
+            if ram_gb >= 16:
+                return "small"
+            return "base"
+        except ImportError:
+            return "base"
+
+
+def get_system_info() -> dict:
+    """Return a summary dict of system capabilities for the frontend."""
+    gpu_info = detect_gpu()
+    model_size = select_model_size(gpu_info)
+
+    ffmpeg_available = shutil.which("ffmpeg") is not None
+
+    ram_gb = 0
+    try:
+        import psutil
+        ram_gb = round(psutil.virtual_memory().total / (1024 ** 3), 1)
+    except ImportError:
+        pass
+
+    return {
+        "gpu_available": gpu_info.available,
+        "gpu_device": gpu_info.device,
+        "gpu_name": gpu_info.name,
+        "vram_total_mb": gpu_info.vram_total_mb,
+        "vram_free_mb": gpu_info.vram_free_mb,
+        "compute_type": gpu_info.compute_type,
+        "selected_model": model_size,
+        "ram_gb": ram_gb,
+        "ffmpeg_available": ffmpeg_available,
+    }

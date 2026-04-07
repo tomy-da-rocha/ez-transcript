@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EZ Transcript — Transcription locale par IA</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <header>
+        <div class="header-content">
+            <h1>🎙️ EZ Transcript</h1>
+            <p class="subtitle">Transcription audio/vidéo locale par IA — 100% privé</p>
+            <div id="system-info" class="system-badge"></div>
+        </div>
+    </header>
+
+    <main>
+        <!-- STEP 1: Upload -->
+        <section id="step-upload" class="step active">
+            <h2>1. Choisir un fichier</h2>
+            <div id="drop-zone" class="drop-zone">
+                <div class="drop-zone-content">
+                    <span class="drop-icon">📁</span>
+                    <p>Glissez-déposez vos fichiers audio/vidéo ici</p>
+                    <p class="drop-hint">ou cliquez pour sélectionner</p>
+                    <p class="drop-formats">MP3, MP4, WAV, OGG, FLAC, MKV, AVI, WEBM, M4A</p>
+                </div>
+                <input type="file" id="file-input" multiple
+                    accept=".mp3,.mp4,.wav,.ogg,.flac,.mkv,.avi,.webm,.m4a,.wma,.aac">
+            </div>
+            <div id="upload-progress" class="upload-progress hidden">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="upload-progress-fill"></div>
+                </div>
+                <span id="upload-progress-text">Upload en cours...</span>
+            </div>
+            <div id="upload-list" class="upload-list"></div>
+        </section>
+
+        <!-- STEP 2: Preview & Segment Selection -->
+        <section id="step-preview" class="step hidden">
+            <h2>2. Aperçu et sélection</h2>
+
+            <!-- NLE-style editor container -->
+            <div id="nle-editor" class="nle-editor">
+                <!-- Video preview (hidden for audio-only) -->
+                <div id="video-panel" class="nle-video-panel hidden">
+                    <video id="nle-video" class="nle-video"></video>
+                </div>
+
+                <!-- Waveform timeline -->
+                <div class="nle-timeline-panel">
+                    <div class="nle-ruler" id="nle-ruler"></div>
+                    <div id="waveform-container" class="nle-waveform"></div>
+                    <div id="waveform-spectrogram" class="nle-spectrogram"></div>
+                </div>
+
+                <!-- Transport controls -->
+                <div class="nle-transport">
+                    <div class="nle-transport-left">
+                        <button id="nle-play" class="nle-btn" title="Lecture/Pause">▶</button>
+                        <button id="nle-stop" class="nle-btn" title="Stop">⏹</button>
+                        <span id="nle-timecode" class="nle-timecode">00:00:00.00</span>
+                        <span class="nle-timecode-sep">/</span>
+                        <span id="nle-duration" class="nle-timecode nle-duration-total">00:00:00.00</span>
+                    </div>
+                    <div class="nle-transport-right">
+                        <button id="nle-zoom-out" class="nle-btn nle-btn-sm" title="Zoom -">−</button>
+                        <input type="range" id="nle-zoom" class="nle-zoom-slider" min="1" max="500" value="1">
+                        <button id="nle-zoom-in" class="nle-btn nle-btn-sm" title="Zoom +">+</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Segment mode -->
+            <div class="segment-controls">
+                <div class="segment-mode">
+                    <label>
+                        <input type="radio" name="segment-mode" value="full" checked>
+                        Tout transcrire
+                    </label>
+                    <label>
+                        <input type="radio" name="segment-mode" value="segments">
+                        Sélectionner des segments sur la timeline
+                    </label>
+                </div>
+
+                <div id="segments-editor" class="segments-editor hidden">
+                    <p class="segments-hint">🎯 Cliquez-glissez sur la forme d'onde pour créer des régions, ou ajoutez manuellement :</p>
+                    <div id="segments-list" class="segments-list"></div>
+                    <button id="btn-add-segment" class="btn btn-secondary">+ Ajouter un segment</button>
+                </div>
+            </div>
+
+            <div class="language-select">
+                <label for="language">Langue (optionnel — auto-détection par défaut) :</label>
+                <select id="language">
+                    <option value="">Auto-détection</option>
+                    <option value="fr">Français</option>
+                    <option value="en">English</option>
+                    <option value="es">Español</option>
+                    <option value="de">Deutsch</option>
+                    <option value="it">Italiano</option>
+                    <option value="pt">Português</option>
+                    <option value="nl">Nederlands</option>
+                    <option value="ja">日本語</option>
+                    <option value="zh">中文</option>
+                    <option value="ko">한국어</option>
+                    <option value="ar">العربية</option>
+                    <option value="ru">Русский</option>
+                </select>
+            </div>
+
+            <div class="actions">
+                <button id="btn-back-upload" class="btn btn-secondary">← Retour</button>
+                <button id="btn-transcribe" class="btn btn-primary">🚀 Transcrire</button>
+            </div>
+        </section>
+
+        <!-- STEP 3: Transcription Progress -->
+        <section id="step-progress" class="step hidden">
+            <h2>3. Transcription en cours</h2>
+            <div class="transcription-progress">
+                <div class="progress-bar big">
+                    <div class="progress-fill" id="transcribe-progress-fill"></div>
+                </div>
+                <p id="transcribe-progress-text" class="progress-text">Préparation...</p>
+                <div class="spinner" id="spinner"></div>
+            </div>
+        </section>
+
+        <!-- STEP 4: Results -->
+        <section id="step-result" class="step hidden">
+            <h2>4. Résultat</h2>
+            <div class="result-meta" id="result-meta"></div>
+            <div class="result-text-container">
+                <textarea id="result-text" class="result-text" readonly></textarea>
+            </div>
+            <div class="result-segments" id="result-segments"></div>
+            <div class="actions result-actions">
+                <button id="btn-copy" class="btn btn-secondary">📋 Copier le texte</button>
+                <button id="btn-export-txt" class="btn btn-secondary">📄 Export .txt</button>
+                <button id="btn-export-srt" class="btn btn-secondary">🎬 Export .srt</button>
+                <button id="btn-export-json" class="btn btn-secondary">📦 Export .json</button>
+                <button id="btn-new" class="btn btn-primary">🔄 Nouvelle transcription</button>
+            </div>
+        </section>
+
+        <!-- History -->
+        <section id="step-history" class="step">
+            <h2>📚 Historique</h2>
+            <div id="history-list" class="history-list">
+                <p class="history-empty">Aucune transcription précédente.</p>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <p>EZ Transcript v1.0 — 100% local, aucune donnée envoyée sur Internet — Licence MIT</p>
+    </footer>
+
+    <script type="module" src="/static/app.js"></script>
+</body>
+</html>

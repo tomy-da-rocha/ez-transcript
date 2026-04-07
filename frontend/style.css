@@ -1,0 +1,845 @@
+/* EZ Transcript — Style (NLE Edition) */
+
+:root {
+    --bg: #0f0f1a;
+    --bg-card: #1a1a2e;
+    --bg-input: #16213e;
+    --bg-timeline: #111122;
+    --accent: #6c63ff;
+    --accent-hover: #5a52d5;
+    --accent-glow: rgba(108, 99, 255, 0.3);
+    --text: #e0e0e0;
+    --text-muted: #8888aa;
+    --text-bright: #ffffff;
+    --success: #4caf50;
+    --danger: #e74c3c;
+    --warning: #f39c12;
+    --border: #2a2a4a;
+    --border-light: #3a3a5a;
+    --radius: 10px;
+    --shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    min-height: 100vh;
+}
+
+/* --- Header --- */
+
+header {
+    background: linear-gradient(135deg, var(--bg-card), #16213e);
+    border-bottom: 1px solid var(--border);
+    padding: 1.5rem 2rem;
+    text-align: center;
+}
+
+.header-content h1 {
+    font-size: 2rem;
+    color: var(--text-bright);
+    margin-bottom: 0.25rem;
+}
+
+.subtitle {
+    color: var(--text-muted);
+    font-size: 0.95rem;
+}
+
+.system-badge {
+    display: inline-block;
+    margin-top: 0.75rem;
+    padding: 0.4rem 1rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+/* --- Main --- */
+
+main {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 2rem 1.5rem;
+}
+
+/* --- Steps --- */
+
+.step {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.5rem 2rem;
+    margin-bottom: 1.5rem;
+    box-shadow: var(--shadow);
+}
+
+.step.hidden {
+    display: none;
+}
+
+.step h2 {
+    color: var(--text-bright);
+    font-size: 1.3rem;
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--border);
+}
+
+/* --- Drop Zone --- */
+
+.drop-zone {
+    border: 2px dashed var(--border);
+    border-radius: var(--radius);
+    padding: 3rem 2rem;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    position: relative;
+}
+
+.drop-zone:hover,
+.drop-zone.dragover {
+    border-color: var(--accent);
+    background: rgba(108, 99, 255, 0.05);
+}
+
+.drop-zone input[type="file"] {
+    display: none;
+}
+
+.drop-icon {
+    font-size: 3rem;
+    display: block;
+    margin-bottom: 0.5rem;
+}
+
+.drop-zone p {
+    color: var(--text);
+    margin: 0.25rem 0;
+}
+
+.drop-hint {
+    color: var(--text-muted) !important;
+    font-size: 0.85rem;
+}
+
+.drop-formats {
+    color: var(--text-muted) !important;
+    font-size: 0.75rem;
+    margin-top: 0.5rem !important;
+}
+
+/* --- Upload Progress --- */
+
+.upload-progress {
+    margin-top: 1rem;
+}
+
+.progress-bar {
+    height: 8px;
+    background: var(--bg);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 0.5rem;
+}
+
+.progress-bar.big {
+    height: 16px;
+    border-radius: 8px;
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), #8b83ff);
+    border-radius: inherit;
+    transition: width 0.3s ease;
+    width: 0%;
+}
+
+/* --- Upload List --- */
+
+.upload-list {
+    margin-top: 1rem;
+}
+
+.upload-entry {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 0.75rem;
+    background: var(--bg);
+    border-radius: 6px;
+    margin-bottom: 0.5rem;
+}
+
+.upload-name {
+    font-weight: 500;
+    color: var(--text-bright);
+}
+
+.upload-meta {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+
+/* ============================================================
+   NLE EDITOR — Video editing style layout
+   ============================================================ */
+
+.nle-editor {
+    background: var(--bg-timeline);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    margin-bottom: 1.5rem;
+    box-shadow:
+        0 0 0 1px var(--border),
+        0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+/* --- Video Panel (NLE top area) --- */
+
+.nle-video-panel {
+    background: #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-bottom: 2px solid var(--border);
+    position: relative;
+    overflow: hidden;
+}
+
+.nle-video-panel::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: 
+        linear-gradient(90deg, rgba(0,0,0,0.4) 0%, transparent 5%, transparent 95%, rgba(0,0,0,0.4) 100%),
+        linear-gradient(180deg, transparent 90%, rgba(0,0,0,0.3) 100%);
+    pointer-events: none;
+    z-index: 1;
+}
+
+.nle-video {
+    width: 100%;
+    max-height: 420px;
+    display: block;
+    object-fit: contain;
+    background: #000;
+}
+
+/* --- Timeline Ruler --- */
+
+.nle-ruler {
+    background: #0d0d1a;
+    border-bottom: 1px solid var(--border);
+    height: 28px;
+    overflow: hidden;
+}
+
+/* --- Waveform --- */
+
+.nle-waveform {
+    background: var(--bg-timeline);
+    position: relative;
+    cursor: crosshair;
+    min-height: 80px;
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+    overflow-y: hidden;
+}
+
+/* Audio-only: bigger waveform */
+.nle-editor:not(.nle-video-mode) .nle-waveform {
+    min-height: 160px;
+}
+
+/* Spectrogram */
+.nle-spectrogram {
+    background: var(--bg-timeline);
+}
+
+/* --- Transport Controls --- */
+
+.nle-transport {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem 1rem;
+    background: linear-gradient(180deg, #16162e, #12122a);
+    border-top: 1px solid var(--border);
+    gap: 1rem;
+}
+
+.nle-transport-left {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.nle-transport-right {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.nle-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-input);
+    color: var(--text-bright);
+    font-size: 1rem;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    flex-shrink: 0;
+}
+
+.nle-btn:hover {
+    border-color: var(--accent);
+    background: rgba(108, 99, 255, 0.15);
+    box-shadow: 0 0 8px var(--accent-glow);
+}
+
+.nle-btn:active {
+    transform: scale(0.95);
+}
+
+.nle-btn-sm {
+    width: 28px;
+    height: 28px;
+    font-size: 0.85rem;
+    border-radius: 6px;
+}
+
+.nle-timecode {
+    font-family: "Consolas", "Courier New", monospace;
+    font-size: 1.05rem;
+    color: var(--accent);
+    background: var(--bg);
+    padding: 0.3rem 0.75rem;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    letter-spacing: 0.5px;
+    min-width: 130px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+
+.nle-duration-total {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+}
+
+.nle-timecode-sep {
+    color: var(--text-muted);
+    margin: 0 0.15rem;
+}
+
+.nle-zoom-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100px;
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+}
+
+.nle-zoom-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px;
+    height: 14px;
+    background: var(--accent);
+    border-radius: 50%;
+    cursor: pointer;
+    border: 2px solid var(--bg);
+    box-shadow: 0 0 4px var(--accent-glow);
+}
+
+.nle-zoom-slider::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    background: var(--accent);
+    border-radius: 50%;
+    cursor: pointer;
+    border: 2px solid var(--bg);
+}
+
+/* --- Video mode specific --- */
+
+.nle-video-mode .nle-waveform {
+    min-height: 100px;
+}
+
+/* ============================================================
+   SEGMENT CONTROLS
+   ============================================================ */
+
+.segment-controls {
+    margin-bottom: 1.5rem;
+}
+
+.segment-mode {
+    display: flex;
+    gap: 1.5rem;
+    margin-bottom: 1rem;
+}
+
+.segment-mode label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    color: var(--text);
+}
+
+.segment-mode input[type="radio"] {
+    accent-color: var(--accent);
+}
+
+.segments-editor {
+    padding: 1rem;
+    background: var(--bg);
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+}
+
+.segments-hint {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    margin-bottom: 0.75rem;
+    font-style: italic;
+}
+
+.segment-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+    flex-wrap: wrap;
+    padding: 0.5rem 0.75rem;
+    background: var(--bg-card);
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    transition: border-color 0.2s;
+}
+
+.segment-row:hover {
+    border-color: var(--border-light);
+}
+
+.seg-color-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.segment-row input[type="text"] {
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 0.4rem 0.6rem;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    transition: border-color 0.2s;
+}
+
+.segment-row input[type="text"]:focus {
+    border-color: var(--accent);
+    outline: none;
+    box-shadow: 0 0 0 2px var(--accent-glow);
+}
+
+.segment-row .seg-label {
+    flex: 1;
+    min-width: 120px;
+}
+
+.segment-row .seg-start,
+.segment-row .seg-end {
+    width: 120px;
+    font-family: "Consolas", "Courier New", monospace;
+    font-size: 0.8rem;
+    text-align: center;
+}
+
+.segment-row label {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+}
+
+.seg-play {
+    font-size: 0.75rem !important;
+}
+
+/* --- Language --- */
+
+.language-select {
+    margin-bottom: 1.5rem;
+}
+
+.language-select label {
+    display: block;
+    margin-bottom: 0.4rem;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+
+.language-select select {
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 0.5rem 0.75rem;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    width: 100%;
+    max-width: 300px;
+}
+
+/* --- Buttons --- */
+
+.btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.6rem 1.2rem;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-decoration: none;
+}
+
+.btn-primary {
+    background: var(--accent);
+    color: white;
+}
+
+.btn-primary:hover {
+    background: var(--accent-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px var(--accent-glow);
+}
+
+.btn-secondary {
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+}
+
+.btn-secondary:hover {
+    border-color: var(--accent);
+    color: var(--text-bright);
+}
+
+.btn-danger {
+    background: transparent;
+    color: var(--danger);
+    border: 1px solid var(--danger);
+}
+
+.btn-danger:hover {
+    background: var(--danger);
+    color: white;
+}
+
+.btn-small {
+    padding: 0.3rem 0.6rem;
+    font-size: 0.8rem;
+}
+
+.actions {
+    display: flex;
+    gap: 0.75rem;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+}
+
+.result-actions {
+    margin-top: 1.5rem;
+    justify-content: center;
+}
+
+/* --- Transcription Progress --- */
+
+.transcription-progress {
+    text-align: center;
+    padding: 2rem 0;
+}
+
+.progress-text {
+    margin-top: 1rem;
+    color: var(--text-muted);
+    font-size: 0.95rem;
+}
+
+.spinner {
+    display: none;
+    width: 40px;
+    height: 40px;
+    border: 4px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    margin: 1.5rem auto 0;
+    animation: spin 1s linear infinite;
+}
+
+.spinner.active {
+    display: block;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* --- Results --- */
+
+.result-meta {
+    margin-bottom: 1.5rem;
+}
+
+.meta-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 0.5rem;
+}
+
+.meta-item {
+    padding: 0.4rem 0.6rem;
+    background: var(--bg);
+    border-radius: 6px;
+    font-size: 0.85rem;
+}
+
+.meta-item strong {
+    color: var(--text-muted);
+}
+
+.result-text-container {
+    margin-bottom: 1rem;
+}
+
+.result-text {
+    width: 100%;
+    min-height: 200px;
+    padding: 1rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-size: 0.95rem;
+    line-height: 1.7;
+    resize: vertical;
+    font-family: inherit;
+}
+
+.segments-table {
+    max-height: 400px;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+}
+
+.segment-result-row {
+    display: flex;
+    gap: 1rem;
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid var(--border);
+    align-items: flex-start;
+}
+
+.segment-result-row:last-child {
+    border-bottom: none;
+}
+
+.seg-time {
+    flex-shrink: 0;
+    color: var(--accent);
+    font-size: 0.8rem;
+    font-family: "Consolas", "Courier New", monospace;
+    min-width: 130px;
+}
+
+.seg-text {
+    color: var(--text);
+    font-size: 0.9rem;
+}
+
+.result-segments h3 {
+    color: var(--text-bright);
+    font-size: 1rem;
+    margin-bottom: 0.75rem;
+}
+
+/* --- History --- */
+
+.history-list {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.history-empty {
+    color: var(--text-muted);
+    text-align: center;
+    padding: 1rem;
+}
+
+.history-entry {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem;
+    background: var(--bg);
+    border-radius: 8px;
+    margin-bottom: 0.5rem;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.history-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    min-width: 0;
+    flex: 1;
+}
+
+.history-name {
+    font-weight: 500;
+    color: var(--text-bright);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.history-meta {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+}
+
+.history-actions {
+    display: flex;
+    gap: 0.4rem;
+    flex-shrink: 0;
+}
+
+/* --- Footer --- */
+
+footer {
+    text-align: center;
+    padding: 1.5rem;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    border-top: 1px solid var(--border);
+    margin-top: 2rem;
+}
+
+/* --- Utilities --- */
+
+.hidden {
+    display: none !important;
+}
+
+/* ============================================================
+   WAVESURFER OVERRIDES
+   ============================================================ */
+
+/* Region handles */
+.nle-waveform [part="region-handle"] {
+    background: var(--accent) !important;
+    width: 4px !important;
+    border-radius: 2px;
+}
+
+/* Scrollbar in waveform */
+.nle-waveform::-webkit-scrollbar {
+    height: 6px;
+}
+
+.nle-waveform::-webkit-scrollbar-track {
+    background: var(--bg-timeline);
+}
+
+.nle-waveform::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 3px;
+}
+
+.nle-waveform::-webkit-scrollbar-thumb:hover {
+    background: var(--accent);
+}
+
+/* --- Responsive --- */
+
+@media (max-width: 768px) {
+    main {
+        padding: 1rem;
+    }
+
+    .step {
+        padding: 1rem;
+    }
+
+    .header-content h1 {
+        font-size: 1.5rem;
+    }
+
+    .nle-transport {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .nle-transport-left,
+    .nle-transport-right {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .nle-video {
+        max-height: 240px;
+    }
+
+    .nle-zoom-slider {
+        width: 60px;
+    }
+
+    .segment-row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .segment-row .seg-start,
+    .segment-row .seg-end {
+        width: 100%;
+    }
+
+    .meta-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .history-entry {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+}

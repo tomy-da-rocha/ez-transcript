@@ -1,0 +1,13 @@
+venv/
+__pycache__/
+*.pyc
+uploads/*
+!uploads/.gitkeep
+output/*
+!output/.gitkeep
+backend/models/*
+!backend/models/.gitkeep
+.env
+*.egg-info/
+dist/
+build/
