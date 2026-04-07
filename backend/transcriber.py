@@ -96,8 +96,13 @@ def transcribe_audio(
 ) -> TranscriptionResult:
     """
     Transcribe an audio file using the best available engine.
-    Tries faster-whisper with GPU first, falls back to CPU on VRAM errors.
+    Uses an aggressive GPU retry cascade before ever falling back to CPU:
+      1. Reduce batch_size (16 → 8 → 4 → 1)
+      2. Downgrade model on GPU (large-v3 → medium → small)
+      3. CPU fallback only as last resort
     """
+    from backend.gpu_utils import AVAILABLE_MODELS
+
     gpu_info = detect_gpu()
     if not model_size:
         model_size = select_model_size(gpu_info)
@@ -105,23 +110,51 @@ def transcribe_audio(
     if progress_callback:
         progress_callback(0.0, f"Chargement du modèle {model_size}...")
 
-    # Try GPU first, fall back to CPU
-    result = _try_transcribe_faster_whisper(
-        audio_path, model_size, gpu_info, language, progress_callback
-    )
+    # --- GPU retry cascade ---
+    if gpu_info.device == "cuda":
+        batch_sizes = [16, 8, 4, 1]
 
-    if result is None and gpu_info.device == "cuda":
-        logger.warning("GPU transcription failed, falling back to CPU")
-        if progress_callback:
-            progress_callback(0.0, "Mémoire GPU insuffisante, basculement sur CPU...")
-        cpu_info = GPUInfo(
-            available=False, device="cpu", name="CPU",
-            vram_total_mb=0, vram_free_mb=0, compute_type="int8",
-        )
-        cpu_model_size = select_model_size(cpu_info)
-        result = _try_transcribe_faster_whisper(
-            audio_path, cpu_model_size, cpu_info, language, progress_callback
-        )
+        # Build model fallback list: start from selected, go down
+        model_idx = AVAILABLE_MODELS.index(model_size) if model_size in AVAILABLE_MODELS else 0
+        models_to_try = AVAILABLE_MODELS[model_idx:]  # e.g. ["large-v3", "medium", "small", "base", "tiny"]
+
+        for try_model in models_to_try:
+            for try_batch in batch_sizes:
+                logger.info(f"GPU attempt: model={try_model}, batch_size={try_batch}")
+                if progress_callback:
+                    if try_model != model_size or try_batch != batch_sizes[0]:
+                        progress_callback(
+                            0.0,
+                            f"Retry GPU: modèle {try_model}, batch {try_batch}..."
+                        )
+
+                result = _try_transcribe_faster_whisper(
+                    audio_path, try_model, gpu_info, language, progress_callback,
+                    batch_size=try_batch,
+                )
+                if result is not None:
+                    return result
+
+                # OOM: clear cache before next attempt
+                _clear_gpu_cache(try_model, gpu_info)
+
+            # If all batch sizes failed for this model, clear its cache before trying smaller model
+            logger.warning(f"All batch sizes failed for {try_model} on GPU, trying smaller model...")
+
+    # --- CPU fallback (last resort) ---
+    logger.warning("All GPU attempts exhausted, falling back to CPU")
+    if progress_callback:
+        progress_callback(0.0, "Basculement sur CPU...")
+
+    cpu_info = GPUInfo(
+        available=False, device="cpu", name="CPU",
+        vram_total_mb=0, vram_free_mb=0, compute_type="int8",
+    )
+    cpu_model_size = select_model_size(cpu_info)
+    result = _try_transcribe_faster_whisper(
+        audio_path, cpu_model_size, cpu_info, language, progress_callback,
+        batch_size=0,
+    )
 
     if result is None:
         raise RuntimeError(
@@ -132,14 +165,31 @@ def transcribe_audio(
     return result
 
 
+def _clear_gpu_cache(model_size: str, gpu_info: GPUInfo):
+    """Evict a model from the cache and free GPU memory."""
+    cache_key = f"faster_whisper_{model_size}_{gpu_info.device}"
+    _model_cache.pop(cache_key, None)
+    try:
+        import torch
+        torch.cuda.empty_cache()
+    except Exception:
+        pass
+
+
 def _try_transcribe_faster_whisper(
     audio_path: Path,
     model_size: str,
     gpu_info: GPUInfo,
     language: str | None,
     progress_callback: ProgressCallback | None,
+    batch_size: int = 0,
 ) -> TranscriptionResult | None:
-    """Attempt transcription with faster-whisper. Returns None on VRAM/OOM errors."""
+    """Attempt transcription with faster-whisper. Returns None on VRAM/OOM errors.
+
+    Args:
+        batch_size: Number of segments to process in parallel on GPU.
+                    0 means sequential (CPU mode, uses beam_size=5).
+    """
     try:
         model = _load_faster_whisper(model_size, gpu_info)
 
@@ -148,8 +198,6 @@ def _try_transcribe_faster_whisper(
 
         start_time = time.time()
 
-        is_batched = gpu_info.device == "cuda"
-
         kwargs = {
             "vad_filter": True,
             "vad_parameters": {"min_silence_duration_ms": 500},
@@ -157,9 +205,9 @@ def _try_transcribe_faster_whisper(
         if language:
             kwargs["language"] = language
 
-        if is_batched:
+        if batch_size > 0:
             # BatchedInferencePipeline: process multiple segments in parallel
-            kwargs["batch_size"] = 16
+            kwargs["batch_size"] = batch_size
         else:
             kwargs["beam_size"] = 5
 
@@ -200,15 +248,7 @@ def _try_transcribe_faster_whisper(
     except Exception as e:
         err_str = str(e).lower()
         if any(kw in err_str for kw in ("out of memory", "cuda", "oom", "cudnn", "cublas")):
-            logger.warning(f"VRAM/CUDA error during transcription: {e}")
-            # Clear cache for this config
-            cache_key = f"faster_whisper_{model_size}_{gpu_info.device}"
-            _model_cache.pop(cache_key, None)
-            try:
-                import torch
-                torch.cuda.empty_cache()
-            except Exception:
-                pass
+            logger.warning(f"VRAM/CUDA error during transcription (model={model_size}, batch={batch_size}): {e}")
             return None
         else:
             logger.error(f"Transcription error: {e}")
