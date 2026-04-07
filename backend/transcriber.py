@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-from backend.gpu_utils import GPUInfo, detect_gpu, select_model_size
+from backend.gpu_utils import GPUInfo, detect_gpu, select_model_size, estimate_batch_size
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +97,7 @@ def transcribe_audio(
     """
     Transcribe an audio file using the best available engine.
     Uses an aggressive GPU retry cascade before ever falling back to CPU:
-      1. Reduce batch_size (16 → 8 → 4 → 1)
+      1. Smart batch_size estimated from VRAM, with one halved retry
       2. Downgrade model on GPU (large-v3 → medium → small)
       3. CPU fallback only as last resort
     """
@@ -112,21 +112,24 @@ def transcribe_audio(
 
     # --- GPU retry cascade ---
     if gpu_info.device == "cuda":
-        batch_sizes = [16, 8, 4, 1]
+        vram = gpu_info.vram_free_mb if gpu_info.vram_free_mb > 0 else gpu_info.vram_total_mb
 
         # Build model fallback list: start from selected, go down
         model_idx = AVAILABLE_MODELS.index(model_size) if model_size in AVAILABLE_MODELS else 0
-        models_to_try = AVAILABLE_MODELS[model_idx:]  # e.g. ["large-v3", "medium", "small", "base", "tiny"]
+        models_to_try = AVAILABLE_MODELS[model_idx:]
 
         for try_model in models_to_try:
+            optimal_batch = estimate_batch_size(try_model, vram)
+            # Try optimal, then half, then 1
+            batch_sizes = sorted(set([optimal_batch, max(1, optimal_batch // 2), 1]), reverse=True)
+
             for try_batch in batch_sizes:
                 logger.info(f"GPU attempt: model={try_model}, batch_size={try_batch}")
-                if progress_callback:
-                    if try_model != model_size or try_batch != batch_sizes[0]:
-                        progress_callback(
-                            0.0,
-                            f"Retry GPU: modèle {try_model}, batch {try_batch}..."
-                        )
+                if progress_callback and (try_model != model_size or try_batch != batch_sizes[0]):
+                    progress_callback(
+                        0.0,
+                        f"Retry GPU: modèle {try_model}, batch {try_batch}..."
+                    )
 
                 result = _try_transcribe_faster_whisper(
                     audio_path, try_model, gpu_info, language, progress_callback,
@@ -135,10 +138,8 @@ def transcribe_audio(
                 if result is not None:
                     return result
 
-                # OOM: clear cache before next attempt
                 _clear_gpu_cache(try_model, gpu_info)
 
-            # If all batch sizes failed for this model, clear its cache before trying smaller model
             logger.warning(f"All batch sizes failed for {try_model} on GPU, trying smaller model...")
 
     # --- CPU fallback (last resort) ---
@@ -216,6 +217,7 @@ def _try_transcribe_faster_whisper(
         segments = []
         full_text_parts = []
         duration = info.duration if info.duration else 1.0
+        last_progress_time = 0.0
 
         for seg in segments_gen:
             segments.append(TranscriptionSegment(
@@ -225,9 +227,13 @@ def _try_transcribe_faster_whisper(
             ))
             full_text_parts.append(seg.text.strip())
 
+            # Throttle progress updates to max 1/sec to avoid cross-thread sync overhead
             if progress_callback and duration > 0:
-                pct = min(95.0, 5.0 + (seg.end / duration) * 90.0)
-                progress_callback(pct, f"Transcription... {_fmt_time(seg.end)} / {_fmt_time(duration)}")
+                now = time.time()
+                if now - last_progress_time >= 1.0:
+                    last_progress_time = now
+                    pct = min(95.0, 5.0 + (seg.end / duration) * 90.0)
+                    progress_callback(pct, f"Transcription... {_fmt_time(seg.end)} / {_fmt_time(duration)}")
 
         elapsed = time.time() - start_time
 

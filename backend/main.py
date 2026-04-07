@@ -22,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from backend.gpu_utils import get_system_info
 from backend.file_handler import (
-    validate_file, save_upload, get_upload_info, extract_audio,
+    validate_file, save_upload, get_upload_info,
     extract_segments, cleanup_file, UPLOAD_DIR, OUTPUT_DIR,
 )
 from backend.transcriber import (
@@ -144,15 +144,16 @@ async def start_transcription(file_id: str, request: Request):
 
         async def run_transcription():
             try:
-                # Extract audio segments or full file
+                # Extract audio segments or pass original file directly
                 if segments:
                     audio_paths = await loop.run_in_executor(
                         None, extract_segments, filepath, segments
                     )
+                    temp_files = list(audio_paths)
                 else:
-                    audio_paths = [await loop.run_in_executor(
-                        None, extract_audio, filepath, None, None
-                    )]
+                    # No extraction needed — faster-whisper reads all formats directly
+                    audio_paths = [filepath]
+                    temp_files = []
 
                 all_results = []
                 total_segments = len(audio_paths)
@@ -170,8 +171,8 @@ async def start_transcription(file_id: str, request: Request):
                     )
                     all_results.append(result)
 
-                    # Cleanup temp audio
-                    if audio_path != filepath:
+                    # Cleanup temp audio (only extracted segments)
+                    if audio_path in temp_files:
                         cleanup_file(audio_path)
 
                 # Merge results

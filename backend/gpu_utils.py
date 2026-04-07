@@ -162,6 +162,40 @@ def _safe_compute_type(device: str) -> str:
 
 AVAILABLE_MODELS = ["large-v3", "medium", "small", "base", "tiny"]
 
+# Approximate VRAM footprint per model in MB (int8_float16 / int8)
+_MODEL_VRAM_MB = {
+    "large-v3": 3000,
+    "medium": 1500,
+    "small": 500,
+    "base": 200,
+    "tiny": 100,
+}
+
+# Approximate VRAM per batch element (activations + KV cache)
+_BATCH_ELEMENT_MB = 180
+
+
+def estimate_batch_size(model_size: str, vram_free_mb: int) -> int:
+    """Estimate the maximum batch_size that fits in available VRAM.
+
+    Returns 0 for CPU (no batching).
+    """
+    if vram_free_mb <= 0:
+        return 0
+
+    model_vram = _MODEL_VRAM_MB.get(model_size, 3000)
+    headroom = vram_free_mb - model_vram - 400  # 400 MB safety margin
+
+    if headroom <= 0:
+        return 1
+
+    batch = min(32, max(1, int(headroom / _BATCH_ELEMENT_MB)))
+    logger.info(
+        f"Estimated batch_size={batch} for {model_size} "
+        f"(VRAM free: {vram_free_mb} MB, model: ~{model_vram} MB, headroom: {headroom} MB)"
+    )
+    return batch
+
 
 def select_model_size(gpu_info: GPUInfo) -> str:
     """Select the optimal Whisper model size based on available VRAM/RAM."""
