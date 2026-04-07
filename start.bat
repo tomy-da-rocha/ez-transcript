@@ -1,4 +1,5 @@
 @echo off
+setlocal enabledelayedexpansion
 chcp 65001 >nul 2>&1
 title EZ Transcript
 
@@ -66,10 +67,10 @@ if %ERRORLEVEL% equ 0 (
     )
     :: Install CUDA runtime libraries if not already present
     python -c "import nvidia.cublas" >nul 2>&1
-    if %ERRORLEVEL% neq 0 (
+    if !ERRORLEVEL! neq 0 (
         echo [INFO] Installation des bibliothèques CUDA ^(~800 Mo^)...
         pip install nvidia-cublas-cu12 nvidia-cudnn-cu12
-        if %ERRORLEVEL% neq 0 (
+        if !ERRORLEVEL! neq 0 (
             echo [AVERTISSEMENT] Impossible d'installer CUDA — le mode CPU sera utilisé.
         ) else (
             echo [INFO] CUDA installé avec succès.

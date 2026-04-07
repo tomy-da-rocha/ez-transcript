@@ -175,8 +175,15 @@ def _register_nvidia_dll_paths():
     for pkg_name in nvidia_packages:
         try:
             pkg = __import__(pkg_name, fromlist=[""])
-            bin_dir = os.path.join(os.path.dirname(pkg.__file__), "bin")
-            lib_dir = os.path.join(os.path.dirname(pkg.__file__), "lib")
+            # Namespace packages have __file__=None, use __path__ instead
+            if hasattr(pkg, "__path__") and pkg.__path__:
+                pkg_dir = list(pkg.__path__)[0]
+            elif pkg.__file__:
+                pkg_dir = os.path.dirname(pkg.__file__)
+            else:
+                continue
+            bin_dir = os.path.join(pkg_dir, "bin")
+            lib_dir = os.path.join(pkg_dir, "lib")
             for d in (bin_dir, lib_dir):
                 if os.path.isdir(d):
                     os.add_dll_directory(d)
