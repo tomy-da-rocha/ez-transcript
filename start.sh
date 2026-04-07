@@ -60,7 +60,7 @@ if command -v nvidia-smi &>/dev/null; then
         echo "  GPU: $name (${vram} Mo VRAM)"
     done
     # Install CUDA runtime libraries if not already working
-    if python -c "import ctranslate2; ctranslate2.get_supported_compute_types('cuda')" &>/dev/null; then
+    if python -c "import ctypes; ctypes.CDLL('libcublas.so.12')" &>/dev/null; then
         echo "  CUDA: opérationnel"
     else
         echo "[INFO] Installation des bibliothèques CUDA..."
@@ -91,4 +91,4 @@ echo ""
 }) &
 
 # Run server
-python -m uvicorn backend.main:app --host 0.0.0.0 --port "$PORT"
+python -m uvicorn backend.main:app --host 0.0.0.0 --port "$PORT" --no-access-log

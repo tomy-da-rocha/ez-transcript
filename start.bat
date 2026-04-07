@@ -65,7 +65,7 @@ if %ERRORLEVEL% equ 0 (
         echo   GPU: %%a ^(%%b Mo VRAM^)
     )
     :: Install CUDA runtime libraries if not already present
-    python -c "import ctranslate2; ctranslate2.get_supported_compute_types('cuda')" >nul 2>&1
+    python -c "import ctypes; ctypes.WinDLL('cublas64_12.dll')" >nul 2>&1
     if %ERRORLEVEL% neq 0 (
         echo [INFO] Installation des bibliothèques CUDA...
         pip install nvidia-cublas-cu12 nvidia-cudnn-cu12 --quiet
@@ -94,7 +94,7 @@ echo.
 start "" cmd /c "timeout /t 2 /nobreak >nul & start http://localhost:%PORT%"
 
 :: Run server
-python -m uvicorn backend.main:app --host 0.0.0.0 --port %PORT%
+python -m uvicorn backend.main:app --host 0.0.0.0 --port %PORT% --no-access-log
 
 :: If server stops
 echo.

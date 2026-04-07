@@ -364,17 +364,14 @@ import TimelinePlugin from "/static/lib/timeline.esm.js";
 
         if (syncVideo) {
             // For video: use the video element as the media backend
+            // WaveSurfer will extract the waveform from the video element's
+            // audio track via Web Audio API — no extra HTTP fetch needed
             wsOptions.media = nleVideo;
         } else {
             wsOptions.url = url;
         }
 
         wavesurfer = WaveSurfer.create(wsOptions);
-
-        // For video, load the audio waveform from the media URL
-        if (syncVideo) {
-            wavesurfer.load(url);
-        }
 
         // Events
         wavesurfer.on("ready", () => {

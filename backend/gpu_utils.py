@@ -114,26 +114,31 @@ def _detect_gpu_uncached() -> GPUInfo:
 
 
 def _verify_cuda_runtime() -> bool:
-    """Check that CUDA runtime libraries (cuBLAS, etc.) are actually loadable."""
-    # 1) Best check: ask CTranslate2 (used by faster-whisper)
-    try:
-        import ctranslate2
-        supported = ctranslate2.get_supported_compute_types("cuda")
-        if supported:
-            logger.info(f"CUDA runtime verified via CTranslate2: {supported}")
-            return True
-    except Exception as e:
-        err = str(e).lower()
-        if "cublas" in err or "cuda" in err or "not found" in err or "cannot be loaded" in err:
-            logger.warning(f"CUDA runtime libraries missing: {e}")
-            return False
-        # Other errors (e.g. import error) — try next method
+    """Check that CUDA runtime libraries (cuBLAS, etc.) are actually loadable.
 
-    # 2) Fallback: try PyTorch
+    ctranslate2.get_supported_compute_types('cuda') only lists types *compiled*
+    into the binary — it does NOT verify that cublas64_12.dll is present.
+    We must actually attempt to load a model on CUDA to be sure.
+    """
+    # 1) Try to load the cuBLAS DLL directly (fast, no model needed)
+    try:
+        import ctypes
+        import sys
+        if sys.platform == "win32":
+            ctypes.WinDLL("cublas64_12.dll")
+        else:
+            ctypes.CDLL("libcublas.so.12")
+        logger.info("CUDA runtime verified: cublas library loaded successfully")
+        return True
+    except OSError:
+        pass  # DLL not found — try other methods
+    except Exception:
+        pass
+
+    # 2) Try PyTorch (loads its own CUDA runtime)
     try:
         import torch
         if torch.cuda.is_available():
-            # Actually try to allocate something small
             torch.zeros(1, device="cuda")
             logger.info("CUDA runtime verified via PyTorch")
             return True
@@ -143,8 +148,8 @@ def _verify_cuda_runtime() -> bool:
         logger.warning(f"PyTorch CUDA runtime check failed: {e}")
         return False
 
-    # 3) No way to verify — assume it won't work
-    logger.warning("Cannot verify CUDA runtime (neither CTranslate2 nor PyTorch available)")
+    # 3) Not loadable
+    logger.warning("CUDA runtime libraries (cublas) not found")
     return False
 
 
@@ -289,15 +294,17 @@ def select_model_size(gpu_info: GPUInfo) -> str:
             else:
                 return "base"
     else:
-        # CPU: check system RAM — larger models work fine with enough RAM
+        # CPU: check system RAM — int8 models use ~50% less RAM than float
+        # large-v3 int8 ~3 GB RAM, medium int8 ~1.5 GB, small int8 ~0.5 GB
         try:
             import psutil
-            ram_gb = psutil.virtual_memory().total / (1024 ** 3)
-            if ram_gb >= 32:
-                return "large-v3"
-            if ram_gb >= 16:
-                return "medium"
+            ram_gb = psutil.virtual_memory().available / (1024 ** 3)
+            logger.info(f"CPU model selection: {ram_gb:.1f} GB RAM available")
             if ram_gb >= 8:
+                return "large-v3"
+            if ram_gb >= 5:
+                return "medium"
+            if ram_gb >= 2:
                 return "small"
             return "base"
         except ImportError:

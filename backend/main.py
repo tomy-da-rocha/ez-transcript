@@ -35,7 +35,25 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Suppress noisy httpx/httpcore/huggingface logs
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+logging.getLogger("huggingface_hub").setLevel(logging.WARNING)
+
+# Suppress harmless Windows ProactorEventLoop ConnectionResetError
+if sys.platform == "win32":
+    def _silence_connection_reset(loop, context):
+        exc = context.get("exception")
+        if isinstance(exc, ConnectionResetError):
+            return  # Browser closed a range request — harmless
+        loop.default_exception_handler(context)
+
 app = FastAPI(title="EZ Transcript", version="1.0.0")
+
+if sys.platform == "win32":
+    @app.on_event("startup")
+    async def _setup_error_handler():
+        asyncio.get_event_loop().set_exception_handler(_silence_connection_reset)
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 FRONTEND_DIR = BASE_DIR / "frontend"
