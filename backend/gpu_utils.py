@@ -103,13 +103,12 @@ def _detect_via_nvidia_smi() -> GPUInfo | None:
                 vram_free_mb = int(parts[2])
                 logger.info(f"nvidia-smi GPU: {name} ({vram_total_mb} MB total, {vram_free_mb} MB free)")
 
-                # Validate CUDA is actually usable from Python before claiming float16
+                # Determine best compute type for this GPU
                 compute_type = _safe_compute_type("cuda")
-                device = "cuda" if compute_type != "int8" else "cpu"
 
                 return GPUInfo(
-                    available=device == "cuda",
-                    device=device,
+                    available=True,
+                    device="cuda",
                     name=name,
                     vram_total_mb=vram_total_mb,
                     vram_free_mb=vram_free_mb,
@@ -124,26 +123,44 @@ def _safe_compute_type(device: str) -> str:
     """Determine a compute type that is actually supported on this device."""
     if device == "cpu":
         return "int8"
-    # Check if CUDA is really available via PyTorch
+
+    # 1) Try PyTorch to check compute capability
     try:
         import torch
-        if not torch.cuda.is_available():
-            logger.warning("nvidia-smi found a GPU but torch.cuda is not available — falling back to CPU/int8")
-            return "int8"
-        # Check GPU compute capability for float16 support (>= 7.0 for good perf)
-        capability = torch.cuda.get_device_capability(0)
-        if capability[0] >= 7:
-            return "float16"
-        elif capability[0] >= 6:
-            return "int8_float16"
-        else:
-            return "int8"
+        if torch.cuda.is_available():
+            capability = torch.cuda.get_device_capability(0)
+            if capability[0] >= 7:
+                return "float16"
+            elif capability[0] >= 6:
+                # Pascal (GTX 1080 Ti etc.) — no tensor cores, int8 on CUDA is fast
+                return "int8"
+            else:
+                return "int8"
     except ImportError:
-        logger.warning("PyTorch not installed — cannot validate CUDA, falling back to int8")
-        return "int8"
+        pass
     except Exception as e:
-        logger.warning(f"CUDA validation failed: {e} — falling back to int8")
-        return "int8"
+        logger.warning(f"PyTorch CUDA capability check failed: {e}")
+
+    # 2) Try CTranslate2 directly to verify CUDA support
+    try:
+        import ctranslate2
+        supported = ctranslate2.get_supported_compute_types("cuda")
+        logger.info(f"CTranslate2 CUDA supported compute types: {supported}")
+        # Prefer int8 for older GPUs (safe on all CUDA devices)
+        if "int8" in supported:
+            return "int8"
+        if "float16" in supported:
+            return "float16"
+        if "float32" in supported:
+            return "float32"
+    except ImportError:
+        pass
+    except Exception as e:
+        logger.warning(f"CTranslate2 CUDA check failed: {e}")
+
+    # 3) nvidia-smi found a GPU — trust it, use int8 on CUDA (universally supported)
+    logger.info("Neither PyTorch nor CTranslate2 could verify CUDA details, defaulting to int8 on CUDA")
+    return "int8"
 
 
 def select_model_size(gpu_info: GPUInfo) -> str:

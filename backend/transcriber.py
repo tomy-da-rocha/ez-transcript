@@ -61,17 +61,27 @@ def _load_faster_whisper(model_size: str, gpu_info: GPUInfo):
             download_root=str(Path(__file__).resolve().parent / "models"),
         )
     except ValueError as e:
-        # float16 not supported on this device — retry with int8
-        if "float16" in str(e).lower():
-            logger.warning(f"compute_type '{compute_type}' not supported, retrying with int8: {e}")
+        # Compute type not supported — try int8 on same device, then CPU fallback
+        err_msg = str(e).lower()
+        if "float16" in err_msg or "compute type" in err_msg:
+            logger.warning(f"compute_type '{compute_type}' not supported on {device}, retrying with int8: {e}")
             compute_type = "int8"
-            device = "cpu"
-            model = WhisperModel(
-                model_size,
-                device=device,
-                compute_type=compute_type,
-                download_root=str(Path(__file__).resolve().parent / "models"),
-            )
+            try:
+                model = WhisperModel(
+                    model_size,
+                    device=device,
+                    compute_type=compute_type,
+                    download_root=str(Path(__file__).resolve().parent / "models"),
+                )
+            except Exception:
+                logger.warning(f"int8 on {device} also failed, falling back to CPU")
+                device = "cpu"
+                model = WhisperModel(
+                    model_size,
+                    device=device,
+                    compute_type=compute_type,
+                    download_root=str(Path(__file__).resolve().parent / "models"),
+                )
         else:
             raise
 
