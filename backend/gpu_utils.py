@@ -130,9 +130,10 @@ def _safe_compute_type(device: str) -> str:
         if torch.cuda.is_available():
             capability = torch.cuda.get_device_capability(0)
             if capability[0] >= 7:
-                return "float16"
+                # Turing+ (RTX 20xx, 30xx, 40xx) — tensor cores: int8_float16 is fastest
+                return "int8_float16"
             elif capability[0] >= 6:
-                # Pascal (GTX 1080 Ti etc.) — no tensor cores, int8 on CUDA is fast
+                # Pascal (GTX 1080 Ti etc.) — no tensor cores
                 return "int8"
             else:
                 return "int8"
@@ -146,13 +147,9 @@ def _safe_compute_type(device: str) -> str:
         import ctranslate2
         supported = ctranslate2.get_supported_compute_types("cuda")
         logger.info(f"CTranslate2 CUDA supported compute types: {supported}")
-        # Prefer int8 for older GPUs (safe on all CUDA devices)
-        if "int8" in supported:
-            return "int8"
-        if "float16" in supported:
-            return "float16"
-        if "float32" in supported:
-            return "float32"
+        for preferred in ("int8_float16", "int8", "float16", "float32"):
+            if preferred in supported:
+                return preferred
     except ImportError:
         pass
     except Exception as e:
@@ -163,24 +160,41 @@ def _safe_compute_type(device: str) -> str:
     return "int8"
 
 
+AVAILABLE_MODELS = ["large-v3", "medium", "small", "base", "tiny"]
+
+
 def select_model_size(gpu_info: GPUInfo) -> str:
     """Select the optimal Whisper model size based on available VRAM/RAM."""
     if gpu_info.device in ("cuda", "mps") and gpu_info.vram_total_mb > 0:
-        vram = gpu_info.vram_total_mb
-        if vram >= 10_000:
-            return "large-v3"
-        elif vram >= 6_000:
-            return "medium"
-        elif vram >= 4_000:
-            return "small"
+        vram = gpu_info.vram_free_mb if gpu_info.vram_free_mb > 0 else gpu_info.vram_total_mb
+        # int8_float16 uses ~40% less VRAM than float16, so we can be more aggressive
+        is_quantized = gpu_info.compute_type in ("int8", "int8_float16")
+        if is_quantized:
+            if vram >= 4_000:
+                return "large-v3"
+            elif vram >= 2_500:
+                return "medium"
+            elif vram >= 1_500:
+                return "small"
+            else:
+                return "base"
         else:
-            return "base"
+            if vram >= 6_000:
+                return "large-v3"
+            elif vram >= 4_000:
+                return "medium"
+            elif vram >= 2_000:
+                return "small"
+            else:
+                return "base"
     else:
         # CPU: check system RAM
         try:
             import psutil
             ram_gb = psutil.virtual_memory().total / (1024 ** 3)
             if ram_gb >= 16:
+                return "medium"
+            if ram_gb >= 8:
                 return "small"
             return "base"
         except ImportError:
@@ -209,6 +223,7 @@ def get_system_info() -> dict:
         "vram_free_mb": gpu_info.vram_free_mb,
         "compute_type": gpu_info.compute_type,
         "selected_model": model_size,
+        "available_models": AVAILABLE_MODELS,
         "ram_gb": ram_gb,
         "ffmpeg_available": ffmpeg_available,
     }

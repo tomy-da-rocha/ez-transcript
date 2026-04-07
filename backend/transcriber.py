@@ -41,8 +41,8 @@ ProgressCallback = Callable[[float, str], None]  # (percent, message)
 
 
 def _load_faster_whisper(model_size: str, gpu_info: GPUInfo):
-    """Load a faster-whisper model with appropriate device settings."""
-    from faster_whisper import WhisperModel
+    """Load a faster-whisper model with batched inference pipeline for max GPU utilization."""
+    from faster_whisper import WhisperModel, BatchedInferencePipeline
 
     cache_key = f"faster_whisper_{model_size}_{gpu_info.device}"
     if cache_key in _model_cache:
@@ -53,37 +53,36 @@ def _load_faster_whisper(model_size: str, gpu_info: GPUInfo):
 
     logger.info(f"Loading faster-whisper model '{model_size}' on {device} (compute: {compute_type})")
 
+    model_kwargs = dict(
+        device=device,
+        compute_type=compute_type,
+        download_root=str(Path(__file__).resolve().parent / "models"),
+        num_workers=2 if device == "cuda" else 1,
+    )
+
     try:
-        model = WhisperModel(
-            model_size,
-            device=device,
-            compute_type=compute_type,
-            download_root=str(Path(__file__).resolve().parent / "models"),
-        )
+        base_model = WhisperModel(model_size, **model_kwargs)
     except ValueError as e:
         # Compute type not supported — try int8 on same device, then CPU fallback
         err_msg = str(e).lower()
-        if "float16" in err_msg or "compute type" in err_msg:
+        if "float16" in err_msg or "compute type" in err_msg or "int8_float16" in err_msg:
             logger.warning(f"compute_type '{compute_type}' not supported on {device}, retrying with int8: {e}")
-            compute_type = "int8"
+            model_kwargs["compute_type"] = "int8"
             try:
-                model = WhisperModel(
-                    model_size,
-                    device=device,
-                    compute_type=compute_type,
-                    download_root=str(Path(__file__).resolve().parent / "models"),
-                )
+                base_model = WhisperModel(model_size, **model_kwargs)
             except Exception:
                 logger.warning(f"int8 on {device} also failed, falling back to CPU")
-                device = "cpu"
-                model = WhisperModel(
-                    model_size,
-                    device=device,
-                    compute_type=compute_type,
-                    download_root=str(Path(__file__).resolve().parent / "models"),
-                )
+                model_kwargs["device"] = "cpu"
+                base_model = WhisperModel(model_size, **model_kwargs)
         else:
             raise
+
+    # Wrap in BatchedInferencePipeline for parallel segment processing on GPU
+    if device == "cuda":
+        model = BatchedInferencePipeline(model=base_model)
+        logger.info("Using BatchedInferencePipeline for GPU-accelerated parallel decoding")
+    else:
+        model = base_model
 
     _model_cache[cache_key] = model
     return model
@@ -93,13 +92,15 @@ def transcribe_audio(
     audio_path: Path,
     language: str | None = None,
     progress_callback: ProgressCallback | None = None,
+    model_size: str | None = None,
 ) -> TranscriptionResult:
     """
     Transcribe an audio file using the best available engine.
     Tries faster-whisper with GPU first, falls back to CPU on VRAM errors.
     """
     gpu_info = detect_gpu()
-    model_size = select_model_size(gpu_info)
+    if not model_size:
+        model_size = select_model_size(gpu_info)
 
     if progress_callback:
         progress_callback(0.0, f"Chargement du modèle {model_size}...")
@@ -147,13 +148,20 @@ def _try_transcribe_faster_whisper(
 
         start_time = time.time()
 
+        is_batched = gpu_info.device == "cuda"
+
         kwargs = {
-            "beam_size": 5,
             "vad_filter": True,
             "vad_parameters": {"min_silence_duration_ms": 500},
         }
         if language:
             kwargs["language"] = language
+
+        if is_batched:
+            # BatchedInferencePipeline: process multiple segments in parallel
+            kwargs["batch_size"] = 16
+        else:
+            kwargs["beam_size"] = 5
 
         segments_gen, info = model.transcribe(str(audio_path), **kwargs)
 

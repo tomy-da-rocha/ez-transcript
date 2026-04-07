@@ -128,6 +128,7 @@ async def start_transcription(file_id: str, request: Request):
 
     segments = body.get("segments", [])
     language = body.get("language") or None
+    model = body.get("model") or None
 
     filepath = Path(job["filepath"])
 
@@ -165,7 +166,7 @@ async def start_transcription(file_id: str, request: Request):
                         progress_callback(base + scaled, f"[{seg_label}] {msg}")
 
                     result = await loop.run_in_executor(
-                        None, transcribe_audio, audio_path, language, seg_progress
+                        None, transcribe_audio, audio_path, language, seg_progress, model
                     )
                     all_results.append(result)
 

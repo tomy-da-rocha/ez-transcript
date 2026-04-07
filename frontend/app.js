@@ -97,6 +97,19 @@ import TimelinePlugin from "/static/lib/timeline.esm.js";
                 badge += " | ⚠️ FFmpeg non détecté";
             }
             systemInfo.textContent = badge;
+
+            // Populate model selector
+            const modelSelect = $("#model");
+            if (modelSelect && info.available_models) {
+                // Keep the first "Auto" option
+                while (modelSelect.options.length > 1) modelSelect.remove(1);
+                for (const m of info.available_models) {
+                    const opt = document.createElement("option");
+                    opt.value = m;
+                    opt.textContent = m === info.selected_model ? `${m} (recommandé)` : m;
+                    modelSelect.appendChild(opt);
+                }
+            }
         } catch {
             systemInfo.textContent = "⚠️ Impossible de charger les infos système";
         }
@@ -540,12 +553,13 @@ import TimelinePlugin from "/static/lib/timeline.esm.js";
 
         const segments = getSegments();
         const language = $("#language").value || null;
+        const model = $("#model").value || null;
 
         try {
             const response = await fetch(`/api/transcribe/${currentFileId}`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ segments, language }),
+                body: JSON.stringify({ segments, language, model }),
             });
 
             const reader = response.body.getReader();
