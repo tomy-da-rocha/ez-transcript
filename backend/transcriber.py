@@ -108,6 +108,30 @@ def _load_faster_whisper(model_size: str, gpu_info: GPUInfo):
     return model
 
 
+def _prepare_audio(audio_path: Path, progress_callback: ProgressCallback | None = None) -> tuple[Path, bool]:
+    """Pre-extract audio to 16kHz mono WAV for optimal transcription speed.
+
+    Reading raw PCM/WAV is near-instant for faster-whisper, whereas decoding
+    from a video container (MP4/MKV/AVI) through its internal ffmpeg pipe is
+    extremely slow for large files (~4 min for a 3-hour MP4 on Windows).
+
+    Returns (wav_path, is_temp) — is_temp=True means the caller must clean up.
+    """
+    ext = audio_path.suffix.lower()
+    # Skip extraction for files that are already 16kHz mono WAV
+    # (our own extract_audio output, for example)
+    if ext == ".wav":
+        return audio_path, False
+
+    from backend.file_handler import extract_audio
+    if progress_callback:
+        progress_callback(1.0, "Extraction audio (ffmpeg)...")
+    logger.info(f"Pre-extracting audio from {ext} to 16kHz mono WAV for fast loading")
+    wav_path = extract_audio(audio_path)
+    logger.info(f"Audio extracted: {wav_path} ({wav_path.stat().st_size / (1024*1024):.0f} MB)")
+    return wav_path, True
+
+
 def transcribe_audio(
     audio_path: Path,
     language: str | None = None,
@@ -129,6 +153,28 @@ def transcribe_audio(
 
     if progress_callback:
         progress_callback(0.0, f"Chargement du modèle {model_size}...")
+
+    # Pre-extract audio to WAV for fast loading (avoids slow container decoding)
+    wav_path, wav_is_temp = _prepare_audio(audio_path, progress_callback)
+
+    try:
+        return _transcribe_with_cascade(wav_path, gpu_info, model_size, language, progress_callback)
+    finally:
+        # Clean up temp WAV
+        if wav_is_temp:
+            from backend.file_handler import cleanup_file
+            cleanup_file(wav_path)
+
+
+def _transcribe_with_cascade(
+    audio_path: Path,
+    gpu_info: GPUInfo,
+    model_size: str,
+    language: str | None,
+    progress_callback: ProgressCallback | None,
+) -> TranscriptionResult:
+    """GPU retry cascade, then CPU fallback."""
+    from backend.gpu_utils import AVAILABLE_MODELS
 
     # --- GPU retry cascade ---
     if gpu_info.device == "cuda":

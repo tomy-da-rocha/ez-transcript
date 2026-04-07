@@ -85,7 +85,7 @@ def extract_audio(input_path: Path, start: float | None = None, end: float | Non
     output_name = f"{uuid.uuid4().hex}.wav"
     output_path = UPLOAD_DIR / output_name
 
-    cmd = [ffmpeg, "-y", "-i", str(input_path)]
+    cmd = [ffmpeg, "-y", "-threads", "0", "-i", str(input_path)]
 
     if start is not None:
         cmd.extend(["-ss", str(start)])
