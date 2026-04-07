@@ -52,13 +52,24 @@ source venv/bin/activate
 echo "[INFO] Vérification des dépendances..."
 pip install -r requirements.txt --quiet 2>/dev/null || pip install -r requirements.txt
 
-# Detect GPU
+# Detect GPU and install CUDA libs if needed
 echo ""
 echo "[INFO] Détection du matériel..."
 if command -v nvidia-smi &>/dev/null; then
     nvidia-smi --query-gpu=name,memory.total --format=csv,noheader,nounits 2>/dev/null | while IFS=',' read -r name vram; do
         echo "  GPU: $name (${vram} Mo VRAM)"
     done
+    # Install CUDA runtime libraries if not already working
+    if python -c "import ctranslate2; ctranslate2.get_supported_compute_types('cuda')" &>/dev/null; then
+        echo "  CUDA: opérationnel"
+    else
+        echo "[INFO] Installation des bibliothèques CUDA..."
+        if pip install nvidia-cublas-cu12 nvidia-cudnn-cu12 --quiet 2>/dev/null; then
+            echo "[INFO] CUDA installé avec succès."
+        else
+            echo "[AVERTISSEMENT] Impossible d'installer CUDA — le mode CPU sera utilisé."
+        fi
+    fi
 else
     echo "  Pas de GPU NVIDIA détecté — mode CPU"
 fi

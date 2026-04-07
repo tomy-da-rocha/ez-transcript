@@ -40,6 +40,11 @@ _model_cache: dict = {}
 ProgressCallback = Callable[[float, str], None]  # (percent, message)
 
 
+class _CudaPermanentError(Exception):
+    """Raised when CUDA libraries are missing — no point retrying on GPU."""
+    pass
+
+
 def _load_faster_whisper(model_size: str, gpu_info: GPUInfo):
     """Load a faster-whisper model with batched inference pipeline for max GPU utilization."""
     from faster_whisper import WhisperModel, BatchedInferencePipeline
@@ -129,7 +134,12 @@ def transcribe_audio(
         model_idx = AVAILABLE_MODELS.index(model_size) if model_size in AVAILABLE_MODELS else 0
         models_to_try = AVAILABLE_MODELS[model_idx:]
 
+        gpu_permanently_failed = False
+
         for try_model in models_to_try:
+            if gpu_permanently_failed:
+                break
+
             optimal_batch = estimate_batch_size(try_model, vram)
             # Try optimal, then half, then 1
             batch_sizes = sorted(set([optimal_batch, max(1, optimal_batch // 2), 1]), reverse=True)
@@ -142,16 +152,25 @@ def transcribe_audio(
                         f"Retry GPU: modèle {try_model}, batch {try_batch}..."
                     )
 
-                result = _try_transcribe_faster_whisper(
-                    audio_path, try_model, gpu_info, language, progress_callback,
-                    batch_size=try_batch,
-                )
+                try:
+                    result = _try_transcribe_faster_whisper(
+                        audio_path, try_model, gpu_info, language, progress_callback,
+                        batch_size=try_batch,
+                    )
+                except _CudaPermanentError as e:
+                    logger.error(f"CUDA libraries missing, skipping all GPU attempts: {e}")
+                    if progress_callback:
+                        progress_callback(0.0, "CUDA indisponible, basculement sur CPU...")
+                    gpu_permanently_failed = True
+                    break
+
                 if result is not None:
                     return result
 
                 _clear_gpu_cache(try_model, gpu_info)
 
-            logger.warning(f"All batch sizes failed for {try_model} on GPU, trying smaller model...")
+            if not gpu_permanently_failed:
+                logger.warning(f"All batch sizes failed for {try_model} on GPU, trying smaller model...")
 
     # --- CPU fallback (last resort) ---
     logger.warning("All GPU attempts exhausted, falling back to CPU")
@@ -162,7 +181,12 @@ def transcribe_audio(
         available=False, device="cpu", name="CPU",
         vram_total_mb=0, vram_free_mb=0, compute_type="int8",
     )
+    # Use the best model that fits in RAM
     cpu_model_size = select_model_size(cpu_info)
+    logger.info(f"CPU fallback: using model {cpu_model_size}")
+    if progress_callback:
+        progress_callback(0.0, f"CPU: chargement du modèle {cpu_model_size}...")
+
     result = _try_transcribe_faster_whisper(
         audio_path, cpu_model_size, cpu_info, language, progress_callback,
         batch_size=0,
@@ -264,6 +288,11 @@ def _try_transcribe_faster_whisper(
 
     except Exception as e:
         err_str = str(e).lower()
+        # Permanent CUDA failures: missing libraries — no point retrying on GPU
+        if any(kw in err_str for kw in ("not found", "cannot be loaded", "no kernel image")):
+            logger.error(f"Permanent CUDA failure (missing libraries): {e}")
+            raise _CudaPermanentError(str(e))
+        # Transient CUDA failures: OOM — worth retrying with smaller batch/model
         if any(kw in err_str for kw in ("out of memory", "cuda", "oom", "cudnn", "cublas")):
             logger.warning(f"VRAM/CUDA error during transcription (model={model_size}, batch={batch_size}): {e}")
             return None

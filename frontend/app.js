@@ -93,6 +93,9 @@ import TimelinePlugin from "/static/lib/timeline.esm.js";
             } else {
                 badge = `🟡 CPU — Modèle: ${info.selected_model}`;
             }
+            if (info.cuda_warning) {
+                badge += ` | ⚠️ ${info.cuda_warning}`;
+            }
             if (!info.ffmpeg_available) {
                 badge += " | ⚠️ FFmpeg non détecté";
             }

@@ -64,6 +64,19 @@ if %ERRORLEVEL% equ 0 (
     for /f "tokens=1,2 delims=," %%a in ('nvidia-smi --query-gpu^=name^,memory.total --format^=csv^,noheader^,nounits') do (
         echo   GPU: %%a ^(%%b Mo VRAM^)
     )
+    :: Install CUDA runtime libraries if not already present
+    python -c "import ctranslate2; ctranslate2.get_supported_compute_types('cuda')" >nul 2>&1
+    if %ERRORLEVEL% neq 0 (
+        echo [INFO] Installation des bibliothèques CUDA...
+        pip install nvidia-cublas-cu12 nvidia-cudnn-cu12 --quiet
+        if %ERRORLEVEL% equ 0 (
+            echo [INFO] CUDA installé avec succès.
+        ) else (
+            echo [AVERTISSEMENT] Impossible d'installer CUDA — le mode CPU sera utilisé.
+        )
+    ) else (
+        echo   CUDA: opérationnel
+    )
 ) else (
     echo   Pas de GPU NVIDIA détecté — mode CPU
 )

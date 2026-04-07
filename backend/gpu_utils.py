@@ -22,13 +22,44 @@ class GPUInfo:
     compute_type: str  # "float16", "int8", "int8_float16", "float32"
 
 
-def detect_gpu() -> GPUInfo:
-    """Detect the best available compute device and return GPU info."""
+# Cache the result so we only probe once per process lifetime
+_gpu_info_cache: GPUInfo | None = None
 
+
+def detect_gpu() -> GPUInfo:
+    """Detect the best available compute device and return GPU info.
+
+    The result is cached: hardware doesn't change at runtime.
+    """
+    global _gpu_info_cache
+    if _gpu_info_cache is not None:
+        return _gpu_info_cache
+
+    _gpu_info_cache = _detect_gpu_uncached()
+    return _gpu_info_cache
+
+
+def _detect_gpu_uncached() -> GPUInfo:
     # Try nvidia-smi first (works without PyTorch, which is optional)
     nvidia_smi = _detect_via_nvidia_smi()
     if nvidia_smi:
-        return nvidia_smi
+        # Verify CUDA runtime libraries actually work before claiming GPU support
+        if _verify_cuda_runtime():
+            return nvidia_smi
+        else:
+            logger.warning(
+                f"GPU detected ({nvidia_smi.name}) but CUDA runtime libraries are missing. "
+                f"Install CUDA Toolkit 12.x or run: pip install nvidia-cublas-cu12 nvidia-cudnn-cu12"
+            )
+            # Return CPU info but keep GPU name for display
+            return GPUInfo(
+                available=False,
+                device="cpu",
+                name=f"{nvidia_smi.name} (CUDA indisponible)",
+                vram_total_mb=nvidia_smi.vram_total_mb,
+                vram_free_mb=0,
+                compute_type="int8",
+            )
 
     # Try PyTorch CUDA (if installed)
     try:
@@ -80,6 +111,41 @@ def detect_gpu() -> GPUInfo:
         vram_free_mb=0,
         compute_type="int8",
     )
+
+
+def _verify_cuda_runtime() -> bool:
+    """Check that CUDA runtime libraries (cuBLAS, etc.) are actually loadable."""
+    # 1) Best check: ask CTranslate2 (used by faster-whisper)
+    try:
+        import ctranslate2
+        supported = ctranslate2.get_supported_compute_types("cuda")
+        if supported:
+            logger.info(f"CUDA runtime verified via CTranslate2: {supported}")
+            return True
+    except Exception as e:
+        err = str(e).lower()
+        if "cublas" in err or "cuda" in err or "not found" in err or "cannot be loaded" in err:
+            logger.warning(f"CUDA runtime libraries missing: {e}")
+            return False
+        # Other errors (e.g. import error) — try next method
+
+    # 2) Fallback: try PyTorch
+    try:
+        import torch
+        if torch.cuda.is_available():
+            # Actually try to allocate something small
+            torch.zeros(1, device="cuda")
+            logger.info("CUDA runtime verified via PyTorch")
+            return True
+    except ImportError:
+        pass
+    except Exception as e:
+        logger.warning(f"PyTorch CUDA runtime check failed: {e}")
+        return False
+
+    # 3) No way to verify — assume it won't work
+    logger.warning("Cannot verify CUDA runtime (neither CTranslate2 nor PyTorch available)")
+    return False
 
 
 def _detect_via_nvidia_smi() -> GPUInfo | None:
@@ -223,17 +289,19 @@ def select_model_size(gpu_info: GPUInfo) -> str:
             else:
                 return "base"
     else:
-        # CPU: check system RAM
+        # CPU: check system RAM — larger models work fine with enough RAM
         try:
             import psutil
             ram_gb = psutil.virtual_memory().total / (1024 ** 3)
+            if ram_gb >= 32:
+                return "large-v3"
             if ram_gb >= 16:
                 return "medium"
             if ram_gb >= 8:
                 return "small"
             return "base"
         except ImportError:
-            return "base"
+            return "small"
 
 
 def get_system_info() -> dict:
@@ -261,4 +329,8 @@ def get_system_info() -> dict:
         "available_models": AVAILABLE_MODELS,
         "ram_gb": ram_gb,
         "ffmpeg_available": ffmpeg_available,
+        "cuda_warning": (
+            "CUDA indisponible — installez CUDA Toolkit 12.x ou lancez : pip install nvidia-cublas-cu12 nvidia-cudnn-cu12"
+            if "indisponible" in gpu_info.name else ""
+        ),
     }
